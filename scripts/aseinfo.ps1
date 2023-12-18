@@ -1,13 +1,20 @@
-$tenantId = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+param (
+    [Parameter(Mandatory=$true, HelpMessage="Enter the Entra Identity tenant ID")]
+    [string]$tenantId,
+
+    [Parameter(Mandatory=$true, HelpMessage="Enter the organization prefix")]
+    [string]$orgPrefix
+)
+
 Connect-AzAccount -Tenant $tenantId
 
 # get all subscriptions the user has access to
-$subscriptions = Get-AzSubscription
+$subscriptions = Get-AzSubscription -TenantId $tenantId
 
 $appServicePlans = Get-AzResource -ResourceType "Microsoft.Web/serverfarms" -ExpandProperties
 
 foreach ($subscription in $subscriptions) {
-    Set-AzContext -Subscription $subscription.Id
+    Set-AzContext -Subscription $subscription.Id -Tenant $tenantId
     $appServicePlans = Get-AzResource -ResourceType "Microsoft.Web/serverfarms" -ExpandProperties | Where-Object { $_.Sku.Tier -eq "Isolated" }
 
     foreach ($plan in $appServicePlans) {
@@ -25,7 +32,7 @@ foreach ($subscription in $subscriptions) {
         $appServicePlanInfo | Add-Member $skuProperties
         $appServicePlanInfo | Add-Member $subscriptionProperties
         $appServicePlanInfo | Add-Member $serviceProperties
-        $appServicePlanInfo | Export-Csv -Path "appserviceplaninfo.csv" -Append -NoTypeInformation
+        $appServicePlanInfo | Export-Csv -Path "${orgPrefix}-appserviceplaninfo.csv" -Append -NoTypeInformation
 
         $appSvcPlan = Get-AzAppServicePlan -Name $plan.Name -ResourceGroupName $plan.ResourceGroupName
 
@@ -43,7 +50,7 @@ foreach ($subscription in $subscriptions) {
                 }
             $webAppInfo = $webapp | Select-Object -Property Name, State, Id, Kind, DefaultHostName, ResourceGroup
             $webAppInfo | Add-Member $subProperties
-            $webAppInfo | Export-Csv -Path "webappinfo.csv" -Append -NoTypeInformation
+            $webAppInfo | Export-Csv -Path "${orgPrefix}-webappinfo.csv" -Append -NoTypeInformation
         }
     }
 
