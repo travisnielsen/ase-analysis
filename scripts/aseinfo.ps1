@@ -16,7 +16,6 @@ $appServicePlans = Get-AzResource -ResourceType "Microsoft.Web/serverfarms" -Exp
 foreach ($subscription in $subscriptions) {
     Set-AzContext -Subscription $subscription.Id -Tenant $tenantId
 
-
     $appServiceEnvironmentsV2 = Get-AzResource -ResourceType "Microsoft.Web/hostingEnvironments" -ExpandProperties | Where-Object { $_.Kind -eq "ASEV2" }
 
     foreach ($ase in $appServiceEnvironmentsV2) {
@@ -39,49 +38,53 @@ foreach ($subscription in $subscriptions) {
         $aseInfo = $ase | Select-Object -Property ResourceName, Kind, ResourceGroupName, Location, Id, SubscriptionId
         $aseInfo | Add-Member $subscriptionProperties
         $aseInfo | Add-Member $serviceProperties
-        $aseInfo | Export-Csv -Path "${orgPrefix}-appserviceenvironmentinfo.csv" -Append -NoTypeInformation -UseQuotes AsNeeded
+        $aseInfo | Export-Csv -Path "${orgPrefix}-aseinfo.csv" -Append -NoTypeInformation -UseQuotes AsNeeded
     }
-
 
     $appServicePlans = Get-AzResource -ResourceType "Microsoft.Web/serverfarms" -ExpandProperties | Where-Object { $_.Sku.Tier -eq "Isolated" }
 
     foreach ($plan in $appServicePlans) {
         Write-Information "Processing $($plan.Name)"
         $subscriptionProperties = @{ SubscriptionName = $subscription.Name }
-        $skuProperties = @{ SkuTier = $plan.Sku.Tier; SkuSize = $plan.Sku.Size }
+        $skuProperties = @{ SkuTier = $plan.Sku.Tier; SkuSize = $plan.Sku.Size; Capacity = $plan.Sku.Capacity; }
         $serviceProperties = @{ 
             NumberOfSites = $plan.Properties.numberOfSites; 
-            Status = $plan.Properties.status; 
-            MaximumNumberOfWorkers = $plan.Properties.maximumNumberOfWorkers; 
+            Status = $plan.Properties.status;
+            HostingEnvResourceName = $plan.Properties.hostingEnvironmentProfile.Name;
+            HostingEnvResourceId = $plan.Properties.hostingEnvironmentProfile.Id;
+            MaximumNumberOfWorkers = $plan.Properties.maximumNumberOfWorkers;
             Reserved = $plan.Properties.reserved;
             Kind = $plan.Properties.kind;
+            WorkerSize = $plan.Properties.workerSize;
+            WorkerCount = $plan.Properties.currentNumberOfWorkers;
             Tags = $plan.Tags | ConvertTo-Json -Compress;
         }
         $appServicePlanInfo = $plan | Select-Object -Property Name, Id, ResourceGroupName, Location
         $appServicePlanInfo | Add-Member $skuProperties
         $appServicePlanInfo | Add-Member $subscriptionProperties
         $appServicePlanInfo | Add-Member $serviceProperties
-        $appServicePlanInfo | Export-Csv -Path "${orgPrefix}-appserviceplaninfo.csv" -Append -NoTypeInformation -UseQuotes AsNeeded
+        $appServicePlanInfo | Export-Csv -Path "${orgPrefix}-aspinfo.csv" -Append -NoTypeInformation -UseQuotes AsNeeded
 
         $appSvcPlan = Get-AzAppServicePlan -Name $plan.Name -ResourceGroupName $plan.ResourceGroupName
 
-        # Export Web App Information
+        # Export app information
 
-        $webApps = Get-AzWebApp -AppServicePlan $appSvcPlan
+        $apps = Get-AzWebApp -AppServicePlan $appSvcPlan
 
-        foreach ($webApp in $webApps) {
-            $subProperties = @{ 
-                HostingEnvResourceId = $webApp.HostingEnvironmentProfile.Id;
-                HostingEnvResourceName = $webApp.HostingEnvironmentProfile.Name;
-                NumberOfWorkers = $webApp.SiteConfig.NumberOfWorkers;
-                WindowsFxVersion = $webApp.SiteConfig.WindowsFxVersion;
-                LinuxFxVersion = $webApp.SiteConfig.LinuxFxVersion;
-                Tags = $webApp.Tags | ConvertTo-Json -Compress;
-                }
-            $webAppInfo = $webapp | Select-Object -Property Name, State, Id, Kind, DefaultHostName, ResourceGroup
-            $webAppInfo | Add-Member $subProperties
-            $webAppInfo | Export-Csv -Path "${orgPrefix}-webappinfo.csv" -Append -NoTypeInformation -UseQuotes AsNeeded
+        foreach ($app in $apps) {
+            $appProperties = @{ 
+                HostingEnvResourceId = $app.HostingEnvironmentProfile.Id;
+                HostingEnvResourceName = $app.HostingEnvironmentProfile.Name;
+                NumberOfWorkers = $app.SiteConfig.NumberOfWorkers;
+                WindowsFxVersion = $app.SiteConfig.WindowsFxVersion;
+                LinuxFxVersion = $app.SiteConfig.LinuxFxVersion;
+                AppServicePlanId = $appSvcPlan.Id;
+                AppServicePlanName = $appSvcPlan.Name;
+                Tags = $app.Tags | ConvertTo-Json -Compress;
+            }
+            $appInfo = $app | Select-Object -Property Name, State, Id, Kind, DefaultHostName, ResourceGroup
+            $appInfo | Add-Member $appProperties
+            $appInfo | Export-Csv -Path "${orgPrefix}-appinfo.csv" -Append -NoTypeInformation -UseQuotes AsNeeded
         }
     }
-
 }
